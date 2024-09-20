@@ -22,9 +22,119 @@ Step 13:Generate the graph using networkx<br/>
 Step 14:Update margins and display the graph using matplotlib.pyplot<br/>
 
 ## Program:
-''' Type your Code here '''
+### Import the necessary Libaries:
+```py
+import networkx as nx
+import pandas as pd
+import matplotlib.pyplot as plt
+from pybbn.graph.dag import Bbn
+from pybbn.graph.dag import Edge,EdgeType
+from pybbn.graph.jointree import EvidenceBuilder
+from pybbn.graph.node import BbnNode
+from pybbn.graph.variable import Variable
+from pybbn.pptc.inferencecontroller import InferenceController
+pd.options.display.max_columns=50
+```
+### Read the Dataset:
+```py
+df=pd.read_csv('weatherAUS.csv',encoding='utf-8')
+df=df[pd.isnull(df['RainTomorrow'])==False]
+df = df.drop(columns='Date')
+```
+### For other columns with missing values, fill them in with column mean:
+```py
+numeric_columns = df.select_dtypes(include=['number']).columns
+df.loc[:, numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+```
+### Create bands for variables that we want to use in the model:
+```py
+df['WindGustSpeedCat']=df['WindGustSpeed'].apply(lambda x: '0.<=40'   if x<=40 else '1.40-50' if 40<x<=50 else '2.>50')
+df['Humidity9amCat']=df['Humidity9am'].apply(lambda x: '1.>60' if x>60 else '0.<=60')
+df['Humidity3pmCat']=df['Humidity3pm'].apply(lambda x: '1.>60' if x>60 else '0.<=60')
+```
+### Show a snaphsot of data:
+```py
+prntf(df)
+```
+### This function helps to calculate probability distribution, which goes into BBN (note, can handle up to 2 parents):
+```py
+def probs(data, child, parent1=None, parent2=None):
+    if parent1==None:
+        # Calculate probabilities
+        prob=pd.crosstab(data[child], 'Empty', margins=False, normalize='columns').sort_index().to_numpy().reshape(-1).tolist()
+    elif parent1!=None:
+            # Check if child node has 1 parent or 2 parents
+            if parent2==None:
+                # Caclucate probabilities
+                prob=pd.crosstab(data[parent1],data[child], margins=False, normalize='index').sort_index().to_numpy().reshape(-1).tolist()
+            else:
+                # Caclucate probabilities
+                prob=pd.crosstab([data[parent1],data[parent2]],data[child], margins=False, normalize='index').sort_index().to_numpy().reshape(-1).tolist()
+    else: print("Error in Probability Frequency Calculations")
+    return prob
+```
+### Create nodes by using our earlier function to automatically calculate probabilities:
+```py
+H9am = BbnNode(Variable(0, 'H9am', ['<=60', '>60']), probs(df, child='Humidity9amCat'))
+H3pm = BbnNode(Variable(1, 'H3pm', ['<=60', '>60']), probs(df, child='Humidity3pmCat', parent1='Humidity9amCat'))
+W = BbnNode(Variable(2, 'W', ['<=40', '40-50', '>50']), probs(df, child='WindGustSpeedCat'))
+RT = BbnNode(Variable(3, 'RT', ['No', 'Yes']), probs(df, child='RainTomorrow', parent1='Humidity3pmCat', parent2='WindGustSpeedCat'))
+```
+### Create Network:
+```py
+bbn = Bbn() \
+    .add_node(H9am) \
+    .add_node(H3pm) \
+    .add_node(W) \
+    .add_node(RT) \
+    .add_edge(Edge(H9am, H3pm, EdgeType.DIRECTED)) \
+    .add_edge(Edge(H3pm, RT, EdgeType.DIRECTED)) \
+    .add_edge(Edge(W, RT, EdgeType.DIRECTED))
+```
+### Convert the BBN to a join tree:
+```py
+join_tree = InferenceController.apply(bbn)
+```
+### Set node positions:
+```py
+pos = {0: (-1, 2), 1: (-1, 0.5), 2: (1, 0.5), 3: (0, -1)}
+```
+### Set options for graph looks:
+```py
+options = {
+    "font_size": 16,
+    "node_size": 4000,
+    "node_color": "pink",
+    "edgecolors": "blue",
+    "edge_color": "green",
+    "linewidths": 5,
+    "width": 5,}
+```
+### Generate graph:
+```py
+n, d = bbn.to_nx_graph()
+nx.draw(n, with_labels=True, labels=d, pos=pos, **options)
+```
+### Update margins and print the graph:
+```py
+ax = plt.gca()
+ax.margins(0.10)
+plt.axis("off")
+plt.show()
+print(probs(df, child='Humidity9amCat'))
+print(probs(df, child='Humidity3pmCat', parent1='Humidity9amCat'))
+print(probs(df, child='WindGustSpeedCat'))
+print(probs(df, child='RainTomorrow', parent1='Humidity3pmCat', parent2='WindGustSpeedCat'))
+```
+
 ## Output:
-''' Show the output in the form screenshorts '''
+### Variable Bands :
+![363492179-6182ef77-1ac1-420a-abe7-b65c0a66df52](https://github.com/user-attachments/assets/f497a532-8997-49ca-af8d-241bacaf1a15)
+![363492192-c9882288-32b6-4e1e-a6d5-b667c3a403b6](https://github.com/user-attachments/assets/0075f18c-c37c-465a-aab6-b6fe868f9da8)
+
+### Graph:
+![363492202-91d35ed4-efa4-4af6-95ee-dfc3b9f6f992](https://github.com/user-attachments/assets/a829d58c-6076-4fe8-a99f-8a7988ae23f7)
+
 ## Result:
    Thus a Bayesian Network is generated using Python
 
